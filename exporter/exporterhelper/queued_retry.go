@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -49,6 +50,8 @@ type QueueSettings struct {
 	NumConsumers int `mapstructure:"num_consumers"`
 	// QueueSize is the maximum number of batches allowed in queue at a given time.
 	QueueSize int `mapstructure:"queue_size"`
+	// QueueSizeBytes is the maximum number of bytes allowed in queue at a given time.
+	QueueSizeBytes int `mapstructure:"queue_size_bytes"`
 	// StorageID if not empty, enables the persistent storage and uses the component specified
 	// as a storage extension for the persistent queue
 	StorageID *config.ComponentID `mapstructure:"storage"`
@@ -64,6 +67,8 @@ func NewDefaultQueueSettings() QueueSettings {
 		// User should calculate this from the perspective of how many seconds to buffer in case of a backend outage,
 		// multiply that by the number of requests per seconds.
 		QueueSize: 5000,
+		// By default, the limit should be big enough to ignore it.
+		QueueSizeBytes: math.MaxInt,
 	}
 }
 
@@ -74,7 +79,11 @@ func (qCfg *QueueSettings) Validate() error {
 	}
 
 	if qCfg.QueueSize <= 0 {
-		return errors.New("queue size must be positive")
+		return errors.New("queue size in batches must be positive")
+	}
+
+	if qCfg.QueueSizeBytes <= 0 {
+		return errors.New("queue size in bytes must be positive")
 	}
 
 	return nil
@@ -163,7 +172,7 @@ func (qrs *queuedRetrySender) initializePersistentQueue(ctx context.Context, hos
 		return err
 	}
 
-	qrs.queue = internal.NewPersistentQueue(ctx, qrs.fullName, qrs.signal, qrs.cfg.QueueSize, qrs.logger, storageClient, qrs.requestUnmarshaler)
+	qrs.queue = internal.NewPersistentQueue(ctx, qrs.fullName, qrs.signal, qrs.cfg.QueueSize, qrs.cfg.QueueSizeBytes, qrs.logger, storageClient, qrs.requestUnmarshaler)
 
 	// TODO: this can be further exposed as a config param rather than relying on a type of queue
 	qrs.requeuingEnabled = true
@@ -215,11 +224,19 @@ func (qrs *queuedRetrySender) start(ctx context.Context, host component.Host) er
 		if err != nil {
 			return fmt.Errorf("failed to create retry queue size metric: %w", err)
 		}
+
 		err = globalInstruments.queueCapacity.UpsertEntry(func() int64 {
 			return int64(qrs.cfg.QueueSize)
 		}, metricdata.NewLabelValue(qrs.fullName))
 		if err != nil {
-			return fmt.Errorf("failed to create retry queue capacity metric: %w", err)
+			return fmt.Errorf("failed to create retry queue capacity in batches metric: %w", err)
+		}
+
+		err = globalInstruments.queueCapacityBytes.UpsertEntry(func() int64 {
+			return int64(qrs.cfg.QueueSizeBytes)
+		}, metricdata.NewLabelValue(qrs.fullName))
+		if err != nil {
+			return fmt.Errorf("failed to create retry queue capacity in bytes metric: %w", err)
 		}
 	}
 

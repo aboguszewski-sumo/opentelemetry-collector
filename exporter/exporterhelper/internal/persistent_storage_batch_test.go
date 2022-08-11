@@ -30,16 +30,18 @@ func TestPersistentStorageBatch_Operations(t *testing.T) {
 
 	itemIndexValue := itemIndex(123)
 	itemIndexArrayValue := []itemIndex{itemIndex(1), itemIndex(2)}
+	uint64Value := uint64(42)
 
 	_, err := newBatch(ps).
 		setItemIndex("index", itemIndexValue).
 		setItemIndexArray("arr", itemIndexArrayValue).
+		setUint64("num", uint64Value).
 		execute(context.Background())
 
 	require.NoError(t, err)
 
 	batch, err := newBatch(ps).
-		get("index", "arr").
+		get("index", "arr", "num").
 		execute(context.Background())
 	require.NoError(t, err)
 
@@ -51,11 +53,15 @@ func TestPersistentStorageBatch_Operations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, itemIndexArrayValue, retrievedItemIndexArrayValue)
 
-	_, err = newBatch(ps).delete("index", "arr").execute(context.Background())
+	retrievedUint64Value, err := batch.getUint64Result("num")
+	require.NoError(t, err)
+	require.Equal(t, uint64Value, retrievedUint64Value)
+
+	_, err = newBatch(ps).delete("index", "arr", "num").execute(context.Background())
 	require.NoError(t, err)
 
 	batch, err = newBatch(ps).
-		get("index", "arr").
+		get("index", "arr", "num").
 		execute(context.Background())
 	require.NoError(t, err)
 
@@ -65,4 +71,7 @@ func TestPersistentStorageBatch_Operations(t *testing.T) {
 	retrievedItemIndexArrayValue, err = batch.getItemIndexArrayResult("arr")
 	require.NoError(t, err)
 	require.Nil(t, retrievedItemIndexArrayValue)
+
+	_, err = batch.getUint64Result("num")
+	require.Error(t, err, errValueNotSet)
 }

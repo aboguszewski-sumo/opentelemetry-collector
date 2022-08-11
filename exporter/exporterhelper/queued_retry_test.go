@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"testing"
@@ -347,6 +348,7 @@ func TestQueuedRetry_QueueMetricsReported(t *testing.T) {
 	require.NoError(t, be.Start(context.Background(), componenttest.NewNopHost()))
 
 	checkValueForGlobalManager(t, defaultExporterTags, int64(5000), "exporter/queue_capacity")
+	checkValueForGlobalManager(t, defaultExporterTags, int64(math.MaxInt64), "exporter/queue_capacity_bytes")
 	for i := 0; i < 7; i++ {
 		require.NoError(t, be.sender.send(newErrorRequest(context.Background())))
 	}
@@ -376,8 +378,11 @@ func TestQueueSettings_Validate(t *testing.T) {
 	qCfg := NewDefaultQueueSettings()
 	assert.NoError(t, qCfg.Validate())
 
+	qCfg.QueueSizeBytes = 0
+	assert.EqualError(t, qCfg.Validate(), "queue size in bytes must be positive")
+
 	qCfg.QueueSize = 0
-	assert.EqualError(t, qCfg.Validate(), "queue size must be positive")
+	assert.EqualError(t, qCfg.Validate(), "queue size in batches must be positive")
 
 	// Confirm Validate doesn't return error with invalid config when feature is disabled
 	qCfg.Enabled = false

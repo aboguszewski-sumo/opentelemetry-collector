@@ -146,6 +146,13 @@ func (bof *batchStruct) getItemIndexArrayResult(key string) ([]itemIndex, error)
 	return itemIndexArrIf.([]itemIndex), nil
 }
 
+func (bof *batchStruct) getUint64Result(key string) (uint64, error) {
+	// itemIndex type is declared as uint64,
+	// so we can use the same function to retrieve values of type uint64.
+	res, err := bof.getItemIndexResult(key)
+	return uint64(res), err
+}
+
 // setRequest adds Set operation over a given request to the batch
 func (bof *batchStruct) setRequest(key string, value Request) *batchStruct {
 	return bof.set(key, value, requestToBytes)
@@ -159,6 +166,10 @@ func (bof *batchStruct) setItemIndex(key string, value itemIndex) *batchStruct {
 // setItemIndexArray adds Set operation over a given itemIndex array to the batch
 func (bof *batchStruct) setItemIndexArray(key string, value []itemIndex) *batchStruct {
 	return bof.set(key, value, itemIndexArrayToBytes)
+}
+
+func (bof *batchStruct) setUint64(key string, value uint64) *batchStruct {
+	return bof.set(key, itemIndex(value), itemIndexToBytes)
 }
 
 func itemIndexToBytes(val interface{}) ([]byte, error) {
@@ -223,4 +234,13 @@ func requestToBytes(req interface{}) ([]byte, error) {
 
 func (bof *batchStruct) bytesToRequest(b []byte) (interface{}, error) {
 	return bof.pcs.unmarshaler(b)
+}
+
+func (bof *batchStruct) getSizeByKey(key string) (uint64, error) {
+	for i := 0; i < len(bof.operations); i++ {
+		if bof.operations[i].Key == key {
+			return uint64(len(bof.operations[i].Value)), nil
+		}
+	}
+	return 0, errKeyNotPresentInBatch
 }

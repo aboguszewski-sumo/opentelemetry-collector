@@ -39,6 +39,9 @@ To use the persistent queue, the following setting needs to be set:
 
 The maximum number of batches stored to disk can be controlled using `sending_queue.queue_size` parameter (which,
 similarly as for in-memory buffering, defaults to 5000 batches).
+In addition, the persistent queue support specifying the maximum number of bytes stored to disk
+by using a `sending_queue.queue_size_bytes` parameter (which is, by default, equal to 2^63 - 1 bytes).
+It is a separate limit from `queue_size`, both limits are being checked when adding new batch to the queue.
 
 When persistent queue is enabled, the batches are being buffered using the provided storage extension - [filestorage] is a popular and safe choice. If the collector instance is killed while having some items in the persistent queue, on restart the items will be be picked and the exporting is continued.
 
