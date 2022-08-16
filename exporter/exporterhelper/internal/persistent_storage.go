@@ -243,16 +243,17 @@ func (pcs *persistentContiguousStorage) getNextItem(ctx context.Context) (Reques
 	if pcs.readIndex != pcs.writeIndex {
 		index := pcs.readIndex
 		// Increase here, so even if errors happen below, it always iterates
+		// Update in the storage is performed in itemDispatchingStart
 		pcs.readIndex++
 		pcs.itemsCount.Store(uint64(pcs.writeIndex - pcs.readIndex))
 
-		pcs.updateReadIndex(ctx)
 		pcs.itemDispatchingStart(ctx, index)
 
 		var req Request
-		batch, err := newBatch(pcs).get(pcs.itemKey(index)).execute(ctx)
+		itemKey := pcs.itemKey(index)
+		batch, err := newBatch(pcs).get(itemKey).execute(ctx)
 		if err == nil {
-			req, err = batch.getRequestResult(pcs.itemKey(index))
+			req, err = batch.getRequestResult(itemKey)
 		}
 
 		if err != nil || req == nil {
@@ -345,14 +346,17 @@ func (pcs *persistentContiguousStorage) retrieveNotDispatchedReqs(ctx context.Co
 	return reqs
 }
 
-// itemDispatchingStart appends the item to the list of currently dispatched items
+// itemDispatchingStart appends the item to the list of currently dispatched items and updates the read key
 func (pcs *persistentContiguousStorage) itemDispatchingStart(ctx context.Context, index itemIndex) {
 	pcs.currentlyDispatchedItems = append(pcs.currentlyDispatchedItems, index)
+
 	_, err := newBatch(pcs).
+		setItemIndex(readIndexKey, pcs.readIndex).
 		setItemIndexArray(currentlyDispatchedItemsKey, pcs.currentlyDispatchedItems).
 		execute(ctx)
+
 	if err != nil {
-		pcs.logger.Debug("Failed updating currently dispatched items",
+		pcs.logger.Debug("Failed starting dispatching an item from persistent queue",
 			zap.String(zapQueueNameKey, pcs.queueName), zap.Error(err))
 	}
 }
@@ -373,17 +377,6 @@ func (pcs *persistentContiguousStorage) itemDispatchingFinish(ctx context.Contex
 		execute(ctx)
 	if err != nil {
 		pcs.logger.Debug("Failed updating currently dispatched items",
-			zap.String(zapQueueNameKey, pcs.queueName), zap.Error(err))
-	}
-}
-
-func (pcs *persistentContiguousStorage) updateReadIndex(ctx context.Context) {
-	_, err := newBatch(pcs).
-		setItemIndex(readIndexKey, pcs.readIndex).
-		execute(ctx)
-
-	if err != nil {
-		pcs.logger.Debug("Failed updating read index",
 			zap.String(zapQueueNameKey, pcs.queueName), zap.Error(err))
 	}
 }
